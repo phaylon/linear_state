@@ -104,7 +104,64 @@ pub struct State {
     data: std::rc::Rc<StateData>,
 }
 
+struct Trace<T> {
+    value: T,
+    previous: Option<std::rc::Rc<Trace<T>>>,
+}
+
+pub struct TraceIter<'s, T> {
+    current: Option<&'s std::rc::Rc<Trace<T>>>,
+}
+
+impl<'s, T> Iterator for TraceIter<'s, T> {
+    type Item = &'s T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.current.map(|trace| &trace.value);
+        self.current = self.current.and_then(|trace| trace.previous.as_ref());
+        current
+    }
+}
+
 impl State {
+
+    pub fn trace<T>(&self) -> TraceIter<'_, T>
+    where
+        T: 'static,
+    {
+        TraceIter {
+            current: self.first::<std::rc::Rc<Trace<T>>>(),
+        }
+    }
+
+    pub fn with_trace<T>(&self, value: T) -> Self
+    where
+        T: 'static,
+    {
+        let current =
+            if let Some(prev) = self.first::<std::rc::Rc<Trace<T>>>() {
+                Trace {
+                    value,
+                    previous: Some(prev.clone()),
+                }
+            } else {
+                Trace {
+                    value,
+                    previous: None,
+                }
+            };
+        let new_data = self.data.child_with_override(vec![std::rc::Rc::new(current)]);
+        State {
+            data: std::rc::Rc::new(new_data),
+        }
+    }
+
+    pub fn first<R>(&self) -> Option<&R>
+    where
+        R: 'static,
+    {
+        self.get().first()
+    }
 
     pub fn has<R>(&self, resource: &R) -> bool
     where

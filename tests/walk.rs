@@ -9,6 +9,9 @@ struct Path { to: &'static str, from: &'static str }
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct Count { value: u64 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct Goto(&'static str);
+
 #[test]
 fn basic() {
 
@@ -35,7 +38,10 @@ fn basic() {
                     |state, _| {
                         for path in state.get::<Path>() {
                             if path.from == at.place {
-                                collector.push(state.with_produced(Some(At { place: path.to })));
+                                let state = state
+                                    .with_produced(Some(At { place: path.to }))
+                                    .with_trace(Goto(path.to));
+                                collector.push(state);
                             }
                         }
                     },
@@ -50,9 +56,17 @@ fn basic() {
     assert_eq!(solutions.len(), 1);
     assert_eq!(solutions[0].get::<At>(), &[At { place: "C" }]);
     assert_eq!(solutions[0].get::<Count>(), &[Count { value: 2 }]);
+    assert_eq!(
+        solutions[0].trace::<Goto>().collect::<Vec<_>>(),
+        vec![&Goto("C"), &Goto("B")],
+    );
 
     let solutions = find_path("Y");
     assert_eq!(solutions.len(), 1);
     assert_eq!(solutions[0].get::<At>(), &[At { place: "Y" }]);
     assert_eq!(solutions[0].get::<Count>(), &[Count { value: 3 }]);
+    assert_eq!(
+        solutions[0].trace::<Goto>().collect::<Vec<_>>(),
+        vec![&Goto("Y"), &Goto("X"), &Goto("D")],
+    );
 }
