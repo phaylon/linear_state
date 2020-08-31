@@ -35,6 +35,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct SearchState<'a> {
     depth: u64,
     container: &'a mut Vec<crate::State>,
@@ -83,6 +84,7 @@ impl<'a> SearchState<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct SearchCollector<'a> {
     container: &'a mut Vec<crate::State>,
 }

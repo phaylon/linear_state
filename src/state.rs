@@ -1,4 +1,5 @@
 
+#[derive(Debug)]
 struct StateData {
     parent: Option<std::rc::Rc<StateData>>,
     slots: type_map::TypeMap,
@@ -46,6 +47,7 @@ impl StateData {
     }
 }
 
+#[derive(Debug)]
 pub struct RootState {
     data: StateData,
 }
@@ -99,16 +101,18 @@ impl RootState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct State {
     data: std::rc::Rc<StateData>,
 }
 
+#[derive(Debug)]
 struct Trace<T> {
     value: T,
     previous: Option<std::rc::Rc<Trace<T>>>,
 }
 
+#[derive(Debug)]
 pub struct TraceIter<'s, T> {
     current: Option<&'s std::rc::Rc<Trace<T>>>,
 }
