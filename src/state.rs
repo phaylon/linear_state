@@ -1,4 +1,6 @@
 
+type ResourceVec<T> = smallvec::SmallVec<[T; 2]>;
+
 #[derive(Debug)]
 struct StateData {
     parent: Option<std::rc::Rc<StateData>>,
@@ -18,7 +20,7 @@ impl StateData {
     where
         R: 'static,
     {
-        if let Some(values) = self.slots.get::<Vec<R>>() {
+        if let Some(values) = self.slots.get::<ResourceVec<R>>() {
             values
         } else if let Some(parent) = &self.parent {
             parent.get()
@@ -31,10 +33,10 @@ impl StateData {
     where
         R: 'static,
     {
-        self.slots.entry::<Vec<R>>().or_insert_with(Vec::new).push(value);
+        self.slots.entry::<ResourceVec<R>>().or_insert_with(ResourceVec::new).push(value);
     }
 
-    fn child_with_override<R>(self: &std::rc::Rc<Self>, values: Vec<R>) -> Self
+    fn child_with_override<R>(self: &std::rc::Rc<Self>, values: ResourceVec<R>) -> Self
     where
         R: 'static,
     {
@@ -154,7 +156,8 @@ impl State {
                     previous: None,
                 }
             };
-        let new_data = self.data.child_with_override(vec![std::rc::Rc::new(current)]);
+        let new_data = self.data
+            .child_with_override(smallvec::smallvec![std::rc::Rc::new(current)]);
         State {
             data: std::rc::Rc::new(new_data),
         }
@@ -196,7 +199,7 @@ impl State {
         let original = self.data.get::<R>();
         for index in 0..original.len() {
             if include(&original[index]) {
-                let mut new_resources = original.iter().cloned().collect::<Vec<R>>();
+                let mut new_resources = original.iter().cloned().collect::<ResourceVec<R>>();
                 let removed = new_resources.swap_remove(index);
                 let mapped = mapper(removed);
                 new_resources.push(mapped);
@@ -236,7 +239,7 @@ impl State {
         let original = self.data.get::<R>();
         for index in 0..original.len() {
             if include(&original[index]) {
-                let mut new_resources = original.iter().cloned().collect::<Vec<R>>();
+                let mut new_resources = original.iter().cloned().collect::<ResourceVec<R>>();
                 let removed = new_resources.swap_remove(index);
                 let new_data = self.data.child_with_override(new_resources);
                 let new_state = State {
@@ -261,7 +264,7 @@ impl State {
         I: IntoIterator<Item = R>,
     {
         let source_iter = source.into_iter();
-        let mut new_resources = self.data.get::<R>().iter().cloned().collect::<Vec<R>>();
+        let mut new_resources = self.data.get::<R>().iter().cloned().collect::<ResourceVec<R>>();
         new_resources.extend(source_iter);
         let new_data = self.data.child_with_override(new_resources);
         State {
