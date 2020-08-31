@@ -62,6 +62,13 @@ impl<'a> SearchState<'a> {
         self.depth
     }
 
+    pub fn flatten(&mut self) {
+        for state in self.container.iter_mut() {
+            let flat = state.flatten();
+            *state = flat;
+        }
+    }
+
     pub fn clear(&mut self) {
         self.container.clear();
     }
