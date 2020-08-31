@@ -2,63 +2,15 @@
 type ResourceVec<T> = smallvec::SmallVec<[T; 2]>;
 
 #[derive(Debug)]
-struct StateData {
-    parent: Option<std::rc::Rc<StateData>>,
-    slots: type_map::TypeMap,
-}
-
-impl StateData {
-
-    fn root() -> Self {
-        Self {
-            parent: None,
-            slots: type_map::TypeMap::new(),
-        }
-    }
-
-    fn get<R>(&self) -> &[R]
-    where
-        R: 'static,
-    {
-        if let Some(values) = self.slots.get::<ResourceVec<R>>() {
-            values
-        } else if let Some(parent) = &self.parent {
-            parent.get()
-        } else {
-            &[]
-        }
-    }
-
-    fn push<R>(&mut self, value: R)
-    where
-        R: 'static,
-    {
-        self.slots.entry::<ResourceVec<R>>().or_insert_with(ResourceVec::new).push(value);
-    }
-
-    fn child_with_override<R>(self: &std::rc::Rc<Self>, values: ResourceVec<R>) -> Self
-    where
-        R: 'static,
-    {
-        let mut slots = type_map::TypeMap::new();
-        slots.insert(values);
-        Self {
-            parent: Some(self.clone()),
-            slots,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct RootState {
-    data: StateData,
+    data: crate::slot::RootMap,
 }
 
 impl RootState {
 
     pub fn new() -> Self {
         Self {
-            data: StateData::root(),
+            data: crate::slot::RootMap::new(),
         }
     }
 
@@ -66,7 +18,7 @@ impl RootState {
     where
         R: 'static,
     {
-        self.data.push(resource);
+        self.data.get_mut_or_default::<ResourceVec<R>>().push(resource);
     }
 
     pub fn add_many<R, I>(&mut self, resource_iter: I)
@@ -98,14 +50,14 @@ impl RootState {
 
     pub fn finalize(self) -> State {
         State {
-            data: std::rc::Rc::new(self.data),
+            data: std::rc::Rc::new(self.data.into_node()),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct State {
-    data: std::rc::Rc<StateData>,
+    data: std::rc::Rc<crate::slot::SlotNode>,
 }
 
 #[derive(Debug)]
@@ -130,6 +82,12 @@ impl<'s, T> Iterator for TraceIter<'s, T> {
 }
 
 impl State {
+
+    pub fn flatten(&self) -> Self {
+        Self {
+            data: std::rc::Rc::new(self.data.flatten()),
+        }
+    }
 
     pub fn trace<T>(&self) -> TraceIter<'_, T>
     where
@@ -156,8 +114,9 @@ impl State {
                     previous: None,
                 }
             };
-        let new_data = self.data
-            .child_with_override(smallvec::smallvec![std::rc::Rc::new(current)]);
+        let trace_resource: ResourceVec<std::rc::Rc<Trace<T>>> =
+            smallvec::smallvec![std::rc::Rc::new(current)];
+        let new_data = self.data.child_with_override(trace_resource);
         State {
             data: std::rc::Rc::new(new_data),
         }
@@ -174,14 +133,16 @@ impl State {
     where
         R: Eq + 'static,
     {
-        self.data.get().contains(resource)
+        self.get().contains(resource)
     }
 
     pub fn get<R>(&self) -> &[R]
     where
         R: 'static,
     {
-        self.data.get()
+        self.data.get::<ResourceVec<R>>()
+            .map(|values| values.as_slice())
+            .unwrap_or_else(|| &[])
     }
 
     pub fn descend_mapped_filtered<R, RF, MF, F>(
@@ -196,7 +157,7 @@ impl State {
         MF: FnMut(R) -> R,
         F: FnMut(&State, &R),
     {
-        let original = self.data.get::<R>();
+        let original = self.get::<R>();
         for index in 0..original.len() {
             if include(&original[index]) {
                 let mut new_resources = original.iter().cloned().collect::<ResourceVec<R>>();
@@ -208,7 +169,7 @@ impl State {
                     data: std::rc::Rc::new(new_data),
                 };
                 let resources = new_state.get::<R>();
-                callback(&new_state, &resources[resources.len()-1]);
+                callback(&new_state, resources.last().expect("just inserted element"));
             }
         }
     }
@@ -236,7 +197,7 @@ impl State {
         RF: FnMut(&R) -> bool,
         F: FnMut(&State, R),
     {
-        let original = self.data.get::<R>();
+        let original = self.get::<R>();
         for index in 0..original.len() {
             if include(&original[index]) {
                 let mut new_resources = original.iter().cloned().collect::<ResourceVec<R>>();
@@ -264,7 +225,7 @@ impl State {
         I: IntoIterator<Item = R>,
     {
         let source_iter = source.into_iter();
-        let mut new_resources = self.data.get::<R>().iter().cloned().collect::<ResourceVec<R>>();
+        let mut new_resources = self.get::<R>().iter().cloned().collect::<ResourceVec<R>>();
         new_resources.extend(source_iter);
         let new_data = self.data.child_with_override(new_resources);
         State {
@@ -272,4 +233,3 @@ impl State {
         }
     }
 }
-
